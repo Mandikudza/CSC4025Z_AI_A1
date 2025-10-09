@@ -84,7 +84,6 @@ class TriageInfluenceDiagram:
 
         # Severity + Risk -> Action
         self.id.addArc('Severity', 'Action')
-        self.id.addArc('RiskOfDeterioration', 'Action')
 
         # Utilities depend on Action + Risk
         self.id.addArc('Action', 'PatientUtility')
@@ -129,33 +128,122 @@ class TriageInfluenceDiagram:
                 else:
                     probs = [0.8, 0.15, 0.05]
                 cpt_risk[s, t, :] = probs
-                
+
     def _set_utilities(self):
-        # Get the utility tensors directly from the influence diagram
         util_pu = self.id.utility('PatientUtility')
         util_rc = self.id.utility('ResourceCost')
 
         # Set PatientUtility values
         inst_pu = gum.Instantiation(util_pu)
-        for a in range(4):  # Action has 4 states
-            for r in range(3):  # RiskOfDeterioration has 3 states
+        for a in range(4):  # Action: 0=Discharge, 1=Observe, 2=Ward, 3=ICU
+            for r in range(3):  # Risk: 0=Low, 1=Medium, 2=High
                 if r == 2:  # High risk
-                    u = {3: 90, 2: 50, 1: 20, 0: -100}[a]
+                    u = {3: 180, 2: 100, 1: 40, 0: -100}[a]  # ICU big gain, Discharge harmful
                 elif r == 1:  # Medium risk
-                    u = {3: 80, 2: 70, 1: 40, 0: -10}[a]
+                    u = {3: 120, 2: 90, 1: 45, 0: -10}[a]    # Ward good, ICU strong
                 else:  # Low risk
-                    u = {0: 80, 1: 60, 2: 40, 3: 30}[a]
+                    u = {0: 50, 1: 40, 2: 30, 3: 20}[a]      # Discharge best, ICU overkill
                 inst_pu.chgVal('Action', a)
                 inst_pu.chgVal('RiskOfDeterioration', r)
                 util_pu.set(inst_pu, u)
 
         # Set ResourceCost values
         inst_rc = gum.Instantiation(util_rc)
-        costs = [0, 10, 50, 200]  # Discharge, Observe, Ward, ICU
+        costs = [0, 8, 50, 110]  # Discharge=0, Observe=8, Ward=50, ICU=110
         for a in range(4):
             inst_rc.chgVal('Action', a)
             util_rc.set(inst_rc, -costs[a])
-            
+    
+    
+    def recommend_action(self, evidence: dict):
+        """
+        Compute expected utility for each action and recommend the best one.
+        """
+        action_eus = []
+        
+        for a in range(4):  # 4 actions: Discharge, Observe, Ward, ICU
+            try:
+                # Create a new inference engine
+                ie = gum.ShaferShenoyLIMIDInference(self.id)
+                
+                # Add ALL evidence including the observed variables
+                for var, state in evidence.items():
+                    ie.addEvidence(var, state)
+                
+                # Set the action as evidence
+                ie.addEvidence('Action', a)
+                
+                # Make inference
+                ie.makeInference()
+                
+                # Get the posterior distribution for RiskOfDeterioration
+                risk_posterior = ie.posterior('RiskOfDeterioration')
+                print(f"Debug Action {a}: Risk posterior: {[risk_posterior[i] for i in range(3)]}")
+                
+                # Get expected utilities
+                eu_patient_tensor = ie.posteriorUtility('PatientUtility')
+                eu_resource_tensor = ie.posteriorUtility('ResourceCost')
+                
+                # Debug the tensor structures
+                patient_structure = eu_patient_tensor.tolist()
+                resource_structure = eu_resource_tensor.tolist()
+                print(f"Debug Action {a}: PatientUtility structure: {patient_structure}")
+                print(f"Debug Action {a}: ResourceCost structure: {resource_structure}")
+                
+                # Extract values - handle the nested list structure properly
+                def extract_utility(tensor):
+                    """Extract utility value from potentially nested tensor structure"""
+                    raw = tensor.tolist()
+                    
+                    # The structure seems to be nested lists, we need to find the actual value
+                    # Based on previous output, it might be a 3D structure for PatientUtility
+                    # and 1D for ResourceCost
+                    
+                    if isinstance(raw, list):
+                        # For PatientUtility: [[[50.0], [40.0], ...]] - we need to find the right value
+                        # For a given action and risk posterior, we should compute weighted average
+                        if len(raw) == 3:  # Probably risk levels
+                            # This is likely the full utility table, we need to compute expected value
+                            # using the risk posterior distribution
+                            expected_value = 0.0
+                            for risk_level in range(3):
+                                risk_prob = risk_posterior[risk_level]
+                                # Find the utility for this risk level and action
+                                risk_utils = raw[risk_level]
+                                if isinstance(risk_utils, list) and len(risk_utils) == 4:  # Actions
+                                    action_util = risk_utils[a]
+                                    if isinstance(action_util, list) and len(action_util) == 1:
+                                        action_util = action_util[0]
+                                    expected_value += risk_prob * action_util
+                            return expected_value
+                        elif len(raw) == 1:
+                            return extract_utility(raw[0])
+                        elif len(raw) == 4:  # Probably actions for ResourceCost
+                            return raw[a] if not isinstance(raw[a], list) else raw[a][0]
+                    return float(raw)
+                
+                eu_patient = extract_utility(eu_patient_tensor)
+                eu_resource = extract_utility(eu_resource_tensor)
+                total_eu = eu_patient + eu_resource
+                
+                print(f"Action {a}: Patient EU = {eu_patient:.2f}, Resource EU = {eu_resource:.2f}, Total = {total_eu:.2f}")
+                
+                action_eus.append((a, total_eu))
+                
+            except Exception as e:
+                print(f"Error computing EU for action {a}: {str(e)}")
+                import traceback
+                traceback.print_exc()
+                action_eus.append((a, -999.0))
+        
+        # Find best action
+        if action_eus:
+            best = max(action_eus, key=lambda x: x[1])
+            return best[0], action_eus
+        else:
+            return 0, [(0, 0), (1, 0), (2, 0), (3, 0)]
+    
+    '''
     def recommend_action(self, evidence: dict):
         """
         Compute expected utility for each action and recommend the best one.
@@ -199,6 +287,8 @@ class TriageInfluenceDiagram:
         # Find best action
         best = max(action_eus, key=lambda x: x[1])
         return best[0], action_eus
+    
+    '''
 
     def _update_priors_from_dataset(self, csv_path):
         df = pd.read_csv(csv_path)
@@ -242,9 +332,9 @@ def interactive_cli():
         csv_path = input("Enter path to dataset CSV: ").strip()
         try:
             triage._update_priors_from_dataset(csv_path)
-            print("✓ Priors updated from dataset")
+            print("Priors updated from dataset")
         except Exception as e:
-            print(f"⚠ Could not load dataset: {e}")
+            print(f"Could not load dataset: {e}")
             print("Continuing with default priors...")
 
     # Collect user inputs
@@ -269,7 +359,7 @@ def interactive_cli():
                 inputs[var] = val
                 break
             except ValueError:
-                print("⚠ Please enter 0, 1, or 2.")
+                print("Please enter 0, 1, or 2.")
 
     # Compute recommended action
     print("\n--- Computing recommendation... ---")
