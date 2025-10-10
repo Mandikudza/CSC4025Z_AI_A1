@@ -31,8 +31,8 @@ import sys
 import textwrap
 
 try:
-    import pyAgrum as gum
-    import pyAgrum.lib.notebook as gnb
+    import pyagrum as gum
+    import pyagrum.lib.notebook as gnb
 except Exception as e:
     print("pyAgrum not available. Please install pyAgrum (pip install pyAgrum) and try again.")
     raise

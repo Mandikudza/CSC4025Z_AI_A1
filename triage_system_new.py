@@ -178,7 +178,7 @@ class TriageInfluenceDiagram:
                 
                 # Get the posterior distribution for RiskOfDeterioration
                 risk_posterior = ie.posterior('RiskOfDeterioration')
-                print(f"Debug Action {a}: Risk posterior: {[risk_posterior[i] for i in range(3)]}")
+                #print(f"Debug Action {a}: Risk posterior: {[risk_posterior[i] for i in range(3)]}")
                 
                 # Get expected utilities
                 eu_patient_tensor = ie.posteriorUtility('PatientUtility')
@@ -187,8 +187,8 @@ class TriageInfluenceDiagram:
                 # Debug the tensor structures
                 patient_structure = eu_patient_tensor.tolist()
                 resource_structure = eu_resource_tensor.tolist()
-                print(f"Debug Action {a}: PatientUtility structure: {patient_structure}")
-                print(f"Debug Action {a}: ResourceCost structure: {resource_structure}")
+                #print(f"Debug Action {a}: PatientUtility structure: {patient_structure}")
+                #print(f"Debug Action {a}: ResourceCost structure: {resource_structure}")
                 
                 # Extract values - handle the nested list structure properly
                 def extract_utility(tensor):
@@ -307,6 +307,7 @@ class TriageInfluenceDiagram:
                 probs = [1/3, 1/3, 1/3]
             self.id.cpt(var).fillWith(probs)
             
+            
 def interactive_cli():
     print(textwrap.dedent("""
     ==========================================
@@ -375,6 +376,6 @@ def interactive_cli():
 
     print(f"\n✓ RECOMMENDED ACTION: {action_names[best_action]}")
     print("==========================================\n")
-    
+
 if __name__ == '__main__':
-    interactive_cli()
+    interactive_cli()   
