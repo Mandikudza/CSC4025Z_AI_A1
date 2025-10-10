@@ -23,7 +23,7 @@ This project implements a Bayesian decision network (influence diagram) for hosp
 ## How the Code Works
 
 1. Preprocessing (preprocess_triage.py):
-
+   **This step does not need to be done by the user as it has already been executed. It was merely mentioned for clarity on how the code works**
    - Loads raw data (e.g., ESI, age, vital signs, lab results).
 
    - Categorizes into model variables (0-2 scale): AgeGroup, PreExistingConditions (scored from labs), SymptomSeverity (from ESI), OxygenSaturation, VitalSigns (abnormal count), TestResults (critical/mild), TrendInVitals (fallback to VitalSigns if no medians).
